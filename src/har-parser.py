@@ -1,74 +1,44 @@
-import base64
-import json
 from pathlib import Path
+import re
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DEFAULT_FOLLOWING_HAR = DATA_DIR / "friendsfordinnerband-following-090426.har"
-DEFAULT_FOLLOWERS_HAR = DATA_DIR / "friendsfordinnerband-followers-090426.har"
+DEFAULT_FOLLOWING_PATH = DATA_DIR / "friendsfordinnerband-following-090426.rtf"
+DEFAULT_FOLLOWERS_PATH = DATA_DIR / "friendsfordinnerband-followers-090426.rtf"
 
 
-def load_har(har_path):
-    """Load a HAR file and return the parsed JSON."""
-    with open(har_path, encoding="utf-8") as har_file:
-        return json.load(har_file)
-
-
-def _decode_response_body(content):
-    """Return the response body text, decoding base64 when needed."""
-    text = content.get("text")
-    if not text:
-        return None
-    if content.get("encoding") == "base64":
-        return base64.b64decode(text).decode("utf-8")
-    return text
-
-
-def _iter_friendship_users(har, path_suffix):
-    """Yield user objects from Instagram friendship list API responses in the HAR."""
-    for entry in har["log"]["entries"]:
-        if path_suffix not in entry["request"]["url"]:
-            continue
-        body = _decode_response_body(entry["response"]["content"])
-        if not body:
-            continue
-        payload = json.loads(body)
-        for user in payload.get("users", []):
-            yield user
-
-
-def get_usernames_from_har(har_path, path_suffix):
+def get_usernames_from_list_file(path):
     """
-    Return a de-duplicated list of usernames from friendship API responses,
-    in the order they first appear in the HAR.
+    Return a de-duplicated list of usernames from a comma-separated
+    account list file, in the order they first appear.
     """
-    har = load_har(har_path)
-    usernames = [
-        user["username"]
-        for user in _iter_friendship_users(har, path_suffix)
-        if user.get("username")
-    ]
+    text = Path(path).read_text(encoding="utf-8", errors="replace").strip()
+    usernames = re.findall(r'"([^"]+)"', text)
+    # Handle a truncated final entry missing its closing quote.
+    leftover = re.search(r',\s*"([^"]+)$', text)
+    if leftover:
+        usernames.append(leftover.group(1))
+    if not usernames:
+        usernames = [part.strip().strip('"') for part in text.split(",") if part.strip()]
     return list(dict.fromkeys(usernames))
 
 
-def get_following_usernames(har_path=DEFAULT_FOLLOWING_HAR):
+def get_following_usernames(path=DEFAULT_FOLLOWING_PATH):
     """Return accounts the user is following."""
-    return get_usernames_from_har(har_path, "/following/")
+    return get_usernames_from_list_file(path)
 
 
-def get_follower_usernames(har_path=DEFAULT_FOLLOWERS_HAR):
+def get_follower_usernames(path=DEFAULT_FOLLOWERS_PATH):
     """Return accounts that follow the user."""
-    return get_usernames_from_har(har_path, "/followers/")
+    return get_usernames_from_list_file(path)
 
 
 def get_following_not_followers(
-    following_har_path=DEFAULT_FOLLOWING_HAR,
-    followers_har_path=DEFAULT_FOLLOWERS_HAR,
+    following_path=DEFAULT_FOLLOWING_PATH,
+    followers_path=DEFAULT_FOLLOWERS_PATH,
 ):
-    """
-    Return accounts the user follows who do not follow back.
-    """
-    following = get_following_usernames(following_har_path)
-    followers = set(get_follower_usernames(followers_har_path))
+    """Return accounts the user follows who do not follow back."""
+    following = get_following_usernames(following_path)
+    followers = set(get_follower_usernames(followers_path))
     return [username for username in following if username not in followers]
 
 
