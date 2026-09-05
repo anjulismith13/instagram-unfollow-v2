@@ -5,20 +5,18 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DEFAULT_FOLLOWING_PATH = DATA_DIR / "friendsfordinnerband-following-090426.rtf"
 DEFAULT_FOLLOWERS_PATH = DATA_DIR / "friendsfordinnerband-followers-090426.rtf"
 
+INSTAGRAM_USERNAME_RE = re.compile(
+    r"https://www\.instagram\.com/([A-Za-z0-9._]+)/?"
+)
+
 
 def get_usernames_from_list_file(path):
     """
-    Return a de-duplicated list of usernames from a comma-separated
-    account list file, in the order they first appear.
+    Return a de-duplicated list of Instagram usernames from an RTF export
+    of a following/followers page, in the order they first appear.
     """
-    text = Path(path).read_text(encoding="utf-8", errors="replace").strip()
-    usernames = re.findall(r'"([^"]+)"', text)
-    # Handle a truncated final entry missing its closing quote.
-    leftover = re.search(r',\s*"([^"]+)$', text)
-    if leftover:
-        usernames.append(leftover.group(1))
-    if not usernames:
-        usernames = [part.strip().strip('"') for part in text.split(",") if part.strip()]
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    usernames = INSTAGRAM_USERNAME_RE.findall(text)
     return list(dict.fromkeys(usernames))
 
 
