@@ -1,15 +1,18 @@
 import json
 from pathlib import Path
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-CONNECTIONS_DIR = (
-    DATA_DIR
-    / "instagram-friendsfordinnerband-2026-09-08-all-time"
-    / "connections"
-    / "followers_and_following"
-)
-DEFAULT_FOLLOWING_PATH = CONNECTIONS_DIR / "following.json"
-DEFAULT_FOLLOWERS_PATH = CONNECTIONS_DIR / "followers_1.json"
+FOLLOWING_FILENAME = "following.json"
+FOLLOWERS_FILENAME = "followers_1.json"
+
+
+def following_path_from_folder(folder):
+    """Return the path to following.json inside a followers_and_following folder."""
+    return Path(folder) / FOLLOWING_FILENAME
+
+
+def followers_path_from_folder(folder):
+    """Return the path to followers_1.json inside a followers_and_following folder."""
+    return Path(folder) / FOLLOWERS_FILENAME
 
 
 def _username_from_entry(entry):
@@ -45,20 +48,17 @@ def get_usernames_from_json(path):
     return list(dict.fromkeys(usernames))
 
 
-def get_following_usernames(path=DEFAULT_FOLLOWING_PATH):
+def get_following_usernames(path):
     """Return accounts the user is following."""
     return get_usernames_from_json(path)
 
 
-def get_follower_usernames(path=DEFAULT_FOLLOWERS_PATH):
+def get_follower_usernames(path):
     """Return accounts that follow the user."""
     return get_usernames_from_json(path)
 
 
-def get_following_not_followers(
-    following_path=DEFAULT_FOLLOWING_PATH,
-    followers_path=DEFAULT_FOLLOWERS_PATH,
-):
+def get_following_not_followers(following_path, followers_path):
     """Return accounts the user follows who do not follow back."""
     following = get_following_usernames(following_path)
     followers = set(get_follower_usernames(followers_path))
