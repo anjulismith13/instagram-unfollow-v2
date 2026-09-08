@@ -10,7 +10,7 @@ def _load_sibling_module(module_name, filename):
     return module
 
 
-post_likers = _load_sibling_module("post_likers_analysis", "post_likers-analysis.py")
+post_likers = _load_sibling_module("post_likers_analysis", "post-likers-analysis.py")
 followers_following = _load_sibling_module(
     "followers_following_analysis", "followers-following-analysis.py"
 )
