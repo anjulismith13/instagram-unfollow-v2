@@ -50,8 +50,11 @@ def _prompt_followers_and_following_folder():
     return folder, following_path, followers_path
 
 
-def _print_list(label, usernames):
+def _print_list(label, usernames, *, show_names=False):
     print(f"{label} ({len(usernames)})")
+    if show_names:
+        for username in usernames:
+            print(f"  {username}")
     print()
 
 
@@ -66,9 +69,11 @@ if __name__ == "__main__":
     likers = get_unique_post_likers()
     following = get_following_usernames(following_path)
     followers = get_follower_usernames(followers_path)
+    following_not_followers = get_following_not_followers(following_path, followers_path)
     following_not_likers = get_following_not_likers(following_path)
 
     _print_list("Unique post likers", likers)
     _print_list("Following", following)
     _print_list("Followers", followers)
-    _print_list("Following but not post likers", following_not_likers)
+    _print_list("Unreciprocated follows", following_not_followers, show_names=True)
+    _print_list("Ghost followers", following_not_likers)
