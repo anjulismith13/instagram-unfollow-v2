@@ -52,13 +52,11 @@ def _prompt_followers_and_following_folder():
 
 def _print_list(label, usernames):
     print(f"{label} ({len(usernames)})")
-    for username in usernames:
-        print(f"  {username}")
     print()
 
 
 if __name__ == "__main__":
-    _, following_path, _ = _prompt_followers_and_following_folder()
+    _, following_path, followers_path = _prompt_followers_and_following_folder()
 
     print("Post like counts")
     for filename, like_count, _ in iter_post_like_counts():
@@ -67,8 +65,10 @@ if __name__ == "__main__":
 
     likers = get_unique_post_likers()
     following = get_following_usernames(following_path)
+    followers = get_follower_usernames(followers_path)
     following_not_likers = get_following_not_likers(following_path)
 
     _print_list("Unique post likers", likers)
     _print_list("Following", following)
+    _print_list("Followers", followers)
     _print_list("Following but not post likers", following_not_likers)
