@@ -1,33 +1,58 @@
+import json
 from pathlib import Path
-import re
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DEFAULT_FOLLOWING_PATH = DATA_DIR / "friendsfordinnerband-following-090426.rtf"
-DEFAULT_FOLLOWERS_PATH = DATA_DIR / "friendsfordinnerband-followers-090426.rtf"
-
-INSTAGRAM_USERNAME_RE = re.compile(
-    r"https://www\.instagram\.com/([A-Za-z0-9._]+)/?"
+CONNECTIONS_DIR = (
+    DATA_DIR
+    / "instagram-friendsfordinnerband-2026-09-08-all-time"
+    / "connections"
+    / "followers_and_following"
 )
+DEFAULT_FOLLOWING_PATH = CONNECTIONS_DIR / "following.json"
+DEFAULT_FOLLOWERS_PATH = CONNECTIONS_DIR / "followers_1.json"
 
 
-def get_usernames_from_list_file(path):
+def _username_from_entry(entry):
+    """Extract a username from an Instagram data-download relationship entry."""
+    if entry.get("title"):
+        return entry["title"]
+    for item in entry.get("string_list_data", []):
+        if item.get("value"):
+            return item["value"]
+        href = item.get("href", "")
+        if "instagram.com/" in href:
+            return href.rstrip("/").split("/")[-1]
+    return None
+
+
+def get_usernames_from_json(path):
     """
-    Return a de-duplicated list of Instagram usernames from an RTF export
-    of a following/followers page, in the order they first appear.
+    Return a de-duplicated list of usernames from an Instagram
+    followers/following JSON export, in file order.
     """
-    text = Path(path).read_text(encoding="utf-8", errors="replace")
-    usernames = INSTAGRAM_USERNAME_RE.findall(text)
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(data, dict):
+        # following.json wraps entries under relationships_following
+        entries = next(iter(data.values()))
+    else:
+        entries = data
+
+    usernames = []
+    for entry in entries:
+        username = _username_from_entry(entry)
+        if username:
+            usernames.append(username)
     return list(dict.fromkeys(usernames))
 
 
 def get_following_usernames(path=DEFAULT_FOLLOWING_PATH):
     """Return accounts the user is following."""
-    return get_usernames_from_list_file(path)
+    return get_usernames_from_json(path)
 
 
 def get_follower_usernames(path=DEFAULT_FOLLOWERS_PATH):
     """Return accounts that follow the user."""
-    return get_usernames_from_list_file(path)
+    return get_usernames_from_json(path)
 
 
 def get_following_not_followers(
@@ -40,8 +65,18 @@ def get_following_not_followers(
     return [username for username in following if username not in followers]
 
 
+def _print_list(label, usernames):
+    print(f"{label} ({len(usernames)})")
+    for username in usernames:
+        print(f"  {username}")
+    print()
+
+
 if __name__ == "__main__":
+    following = get_following_usernames()
+    followers = get_follower_usernames()
     non_followers = get_following_not_followers()
-    print(f"{len(non_followers)} accounts followed who do not follow back")
-    for username in non_followers:
-        print(username)
+
+    _print_list("Following", following)
+    _print_list("Followers", followers)
+    _print_list("Following but not followers", non_followers)
