@@ -53,6 +53,29 @@ def get_following_usernames(path):
     return get_usernames_from_json(path)
 
 
+def get_following_timestamps(path):
+    """Return ``{username: follow_timestamp}`` from a following export.
+
+    Instagram records the timestamp on the relationship entry rather than on
+    the username itself.  It lets callers distinguish a continuing follow
+    from a later unfollow/re-follow of the same handle.
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    entries = next(iter(data.values())) if isinstance(data, dict) else data
+    timestamps = {}
+    for entry in entries:
+        username = _username_from_entry(entry)
+        if not username or username in timestamps:
+            continue
+        timestamp = None
+        for item in entry.get("string_list_data", []):
+            if item.get("timestamp") is not None:
+                timestamp = item["timestamp"]
+                break
+        timestamps[username] = timestamp
+    return timestamps
+
+
 def get_follower_usernames(path):
     """Return accounts that follow the user."""
     return get_usernames_from_json(path)

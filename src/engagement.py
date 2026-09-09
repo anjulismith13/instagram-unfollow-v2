@@ -1,4 +1,7 @@
 import importlib.util
+import json
+import webbrowser
+from datetime import date
 from pathlib import Path
 
 
@@ -22,8 +25,13 @@ iter_post_like_counts = post_likers.iter_post_like_counts
 following_path_from_folder = followers_following.following_path_from_folder
 followers_path_from_folder = followers_following.followers_path_from_folder
 get_following_usernames = followers_following.get_following_usernames
+get_following_timestamps = followers_following.get_following_timestamps
 get_follower_usernames = followers_following.get_follower_usernames
 get_following_not_followers = followers_following.get_following_not_followers
+
+PASSLIST_PATH = Path(__file__).resolve().parent.parent / "passlist.json"
+DELETED_PATH = Path(__file__).resolve().parent.parent / "deleted.json"
+INSTAGRAM_PROFILE_URL = "https://www.instagram.com/{username}/"
 
 
 def get_following_not_likers(following_path, posts_dir=DEFAULT_POSTS_DIR):
@@ -31,6 +39,193 @@ def get_following_not_likers(following_path, posts_dir=DEFAULT_POSTS_DIR):
     following = get_following_usernames(following_path)
     likers = set(get_unique_post_likers(posts_dir))
     return [username for username in following if username not in likers]
+
+
+def load_passlist(path=PASSLIST_PATH):
+    """Return usernames on the passlist (allowed to remain unreciprocated)."""
+    path = Path(path)
+    if not path.is_file():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise SystemExit(f"Passlist must be a JSON list of usernames: {path}")
+    return list(dict.fromkeys(str(username) for username in data if username))
+
+
+def save_passlist(usernames, path=PASSLIST_PATH):
+    """Write the passlist as a JSON list of usernames."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(list(dict.fromkeys(usernames)), indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def add_to_passlist(username, path=PASSLIST_PATH):
+    """Add a username to the passlist file if it is not already present."""
+    passlist = load_passlist(path)
+    if username in passlist:
+        return passlist
+    passlist.append(username)
+    save_passlist(passlist, path)
+    return passlist
+
+
+def filter_passlist(usernames, passlist=None, path=PASSLIST_PATH):
+    """Return usernames with passlisted accounts removed."""
+    if passlist is None:
+        passlist = load_passlist(path)
+    excluded = set(passlist)
+    return [username for username in usernames if username not in excluded]
+
+
+def load_deleted(path=DELETED_PATH):
+    """Return tombstones for accounts confirmed unavailable by the user."""
+    path = Path(path)
+    if not path.is_file():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+        raise SystemExit(f"Deleted list must be a JSON list of records: {path}")
+    return [
+        item for item in data
+        if item.get("username") and "follow_timestamp" in item
+    ]
+
+
+def save_deleted(records, path=DELETED_PATH):
+    """Write deleted-account tombstones."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
+
+
+def add_to_deleted(username, follow_timestamp, path=DELETED_PATH):
+    """Tombstone this exact follow relationship, replacing an older record."""
+    records = [record for record in load_deleted(path) if record["username"] != username]
+    records.append({
+        "username": username,
+        "follow_timestamp": follow_timestamp,
+        "marked_at": date.today().isoformat(),
+    })
+    save_deleted(records, path)
+    return records
+
+
+def filter_deleted_follows(usernames, following_timestamps, followers, path=DELETED_PATH):
+    """Hide unchanged tombstones and discard tombstones no longer applicable."""
+    path = Path(path)
+    current = set(usernames)
+    followers = set(followers)
+    active = []
+    excluded = set()
+    for record in load_deleted(path):
+        username = record["username"]
+        unchanged = (
+            username in current
+            and username not in followers
+            and following_timestamps.get(username) == record["follow_timestamp"]
+        )
+        if unchanged:
+            active.append(record)
+            excluded.add(username)
+    # A missing/re-followed account or one that now follows back must be
+    # reconsidered, so its tombstone is deliberately removed.
+    if path.is_file() and active != load_deleted(path):
+        save_deleted(active, path)
+    return [username for username in usernames if username not in excluded]
+
+
+def get_unreciprocated_follows(
+    following_path, followers_path, path=PASSLIST_PATH, deleted_path=DELETED_PATH
+):
+    """Return unreciprocated follows excluding passlisted and unchanged tombstones."""
+    followers = get_follower_usernames(followers_path)
+    unreciprocated = filter_passlist(
+        get_following_not_followers(following_path, followers_path), path=path
+    )
+    return filter_deleted_follows(
+        unreciprocated, get_following_timestamps(following_path), followers, deleted_path
+    )
+
+
+def open_instagram_profile(username):
+    """Open the Instagram profile page for username in a new browser tab."""
+    webbrowser.open(INSTAGRAM_PROFILE_URL.format(username=username), new=2)
+
+
+def review_unreciprocated_follows(
+    usernames, path=PASSLIST_PATH, deleted_path=DELETED_PATH, following_timestamps=None
+):
+    """
+    Walk unreciprocated follows one account at a time.
+
+    Options:
+      o - open Instagram profile (to unfollow manually)
+      p - add to passlist and skip in future lists
+      d - mark the previously opened profile as unavailable/deleted
+      s - skip this account for now
+      q - quit review
+    """
+    if not usernames:
+        print("No unreciprocated follows to review.")
+        return
+
+    total = len(usernames)
+    print(f"Reviewing {total} unreciprocated follow(s).")
+    print("  [o] open Instagram  [p] passlist  [d] previous profile deleted  [s] skip  [q] quit")
+    print("  After checking an opened profile, enter d at the next prompt if it was unavailable.")
+    print()
+    following_timestamps = following_timestamps or {}
+    last_opened = None
+
+    for index, username in enumerate(usernames, start=1):
+        while True:
+            choice = input(
+                f"[{index}/{total}] @{username} — [o/p/d/s/q]: "
+            ).strip().lower()
+            if choice in {"d", "deleted"}:
+                if last_opened is None:
+                    print("  Open a profile first; d marks the previously opened profile.")
+                else:
+                    timestamp = following_timestamps.get(last_opened)
+                    if timestamp is None:
+                        print(f"  Cannot tombstone @{last_opened}: its export has no follow timestamp.")
+                    else:
+                        add_to_deleted(last_opened, timestamp, path=deleted_path)
+                        print(f"  Marked @{last_opened} deleted ({deleted_path})")
+                    last_opened = None
+                continue
+            if choice in {"o", "unfollow"}:
+                open_instagram_profile(username)
+                print(f"  Opened {INSTAGRAM_PROFILE_URL.format(username=username)}")
+                last_opened = username
+                break
+            if choice in {"p", "pass", "passlist"}:
+                add_to_passlist(username, path=path)
+                print(f"  Added @{username} to passlist ({path})")
+                break
+            if choice in {"s", "skip", ""}:
+                break
+            if choice in {"q", "quit"}:
+                print("Stopped review.")
+                return
+            print("  Choose o (open), p (passlist), d (previous deleted), s (skip), or q (quit).")
+
+    if last_opened is not None:
+        final_choice = input(
+            f"Last opened @{last_opened} — enter [d] if unavailable, or Enter to finish: "
+        ).strip().lower()
+        if final_choice in {"d", "deleted"}:
+            timestamp = following_timestamps.get(last_opened)
+            if timestamp is None:
+                print(f"  Cannot tombstone @{last_opened}: its export has no follow timestamp.")
+            else:
+                add_to_deleted(last_opened, timestamp, path=deleted_path)
+                print(f"  Marked @{last_opened} deleted ({deleted_path})")
+
+    print("Done reviewing unreciprocated follows.")
 
 
 def _prompt_followers_and_following_folder():
@@ -66,14 +261,30 @@ if __name__ == "__main__":
         print(f"  {filename}: {like_count}")
     print()
 
+    passlist = load_passlist()
     likers = get_unique_post_likers()
     following = get_following_usernames(following_path)
     followers = get_follower_usernames(followers_path)
     following_not_followers = get_following_not_followers(following_path, followers_path)
+    following_timestamps = get_following_timestamps(following_path)
+    unreciprocated = filter_deleted_follows(
+        filter_passlist(following_not_followers, passlist=passlist),
+        following_timestamps,
+        followers,
+    )
     following_not_likers = get_following_not_likers(following_path)
 
     _print_list("Unique post likers", likers)
     _print_list("Following", following)
     _print_list("Followers", followers)
-    _print_list("Unreciprocated follows", following_not_followers, show_names=True)
+    if passlist:
+        print(f"Passlist ({len(passlist)}) — excluded from unreciprocated follows")
+        print()
+    deleted = load_deleted()
+    if deleted:
+        print(f"Deleted tombstones ({len(deleted)}) — unchanged accounts excluded from review")
+        print()
+    _print_list("Unreciprocated follows", unreciprocated, show_names=True)
     _print_list("Ghost followers", following_not_likers)
+
+    review_unreciprocated_follows(unreciprocated, following_timestamps=following_timestamps)
