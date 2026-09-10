@@ -31,6 +31,7 @@ get_following_not_followers = followers_following.get_following_not_followers
 
 PASSLIST_PATH = Path(__file__).resolve().parent.parent / "passlist.json"
 DELETED_PATH = Path(__file__).resolve().parent.parent / "deleted.json"
+GHOST_DELETED_PATH = Path(__file__).resolve().parent.parent / "ghost-deleted.json"
 INSTAGRAM_PROFILE_URL = "https://www.instagram.com/{username}/"
 
 
@@ -137,6 +138,27 @@ def filter_deleted_follows(usernames, following_timestamps, followers, path=DELE
     return [username for username in usernames if username not in excluded]
 
 
+def filter_deleted_ghost_followers(
+    usernames, following_timestamps, path=GHOST_DELETED_PATH
+):
+    """Hide unchanged deleted-account tombstones from ghost-follower review."""
+    path = Path(path)
+    current = set(usernames)
+    active = []
+    excluded = set()
+    for record in load_deleted(path):
+        username = record["username"]
+        if (
+            username in current
+            and following_timestamps.get(username) == record["follow_timestamp"]
+        ):
+            active.append(record)
+            excluded.add(username)
+    if path.is_file() and active != load_deleted(path):
+        save_deleted(active, path)
+    return [username for username in usernames if username not in excluded]
+
+
 def get_unreciprocated_follows(
     following_path, followers_path, path=PASSLIST_PATH, deleted_path=DELETED_PATH
 ):
@@ -155,11 +177,15 @@ def open_instagram_profile(username):
     webbrowser.open(INSTAGRAM_PROFILE_URL.format(username=username), new=2)
 
 
-def review_unreciprocated_follows(
-    usernames, path=PASSLIST_PATH, deleted_path=DELETED_PATH, following_timestamps=None
+def _review_follows(
+    usernames,
+    label,
+    path=PASSLIST_PATH,
+    deleted_path=DELETED_PATH,
+    following_timestamps=None,
 ):
     """
-    Walk unreciprocated follows one account at a time.
+    Walk a set of follow candidates one account at a time.
 
     Options:
       o - open Instagram profile (to unfollow manually)
@@ -169,11 +195,11 @@ def review_unreciprocated_follows(
       q - quit review
     """
     if not usernames:
-        print("No unreciprocated follows to review.")
+        print(f"No {label.lower()} to review.")
         return
 
     total = len(usernames)
-    print(f"Reviewing {total} unreciprocated follow(s).")
+    print(f"Reviewing {total} {label.lower()}.")
     print("  [o] open Instagram  [p] passlist  [d] previous profile deleted  [s] skip  [q] quit")
     print("  After checking an opened profile, enter d at the next prompt if it was unavailable.")
     print()
@@ -225,7 +251,36 @@ def review_unreciprocated_follows(
                 add_to_deleted(last_opened, timestamp, path=deleted_path)
                 print(f"  Marked @{last_opened} deleted ({deleted_path})")
 
-    print("Done reviewing unreciprocated follows.")
+    print(f"Done reviewing {label.lower()}.")
+
+
+def review_unreciprocated_follows(
+    usernames, path=PASSLIST_PATH, deleted_path=DELETED_PATH, following_timestamps=None
+):
+    """Interactively review accounts that do not follow back."""
+    _review_follows(
+        usernames,
+        "unreciprocated follow(s)",
+        path=path,
+        deleted_path=deleted_path,
+        following_timestamps=following_timestamps,
+    )
+
+
+def review_ghost_followers(
+    usernames,
+    path=PASSLIST_PATH,
+    deleted_path=GHOST_DELETED_PATH,
+    following_timestamps=None,
+):
+    """Interactively review followers who have not liked the selected posts."""
+    _review_follows(
+        usernames,
+        "ghost follower(s)",
+        path=path,
+        deleted_path=deleted_path,
+        following_timestamps=following_timestamps,
+    )
 
 
 def _prompt_followers_and_following_folder():
@@ -262,6 +317,7 @@ if __name__ == "__main__":
     print()
 
     passlist = load_passlist()
+    deleted = load_deleted()
     likers = get_unique_post_likers()
     following = get_following_usernames(following_path)
     followers = get_follower_usernames(followers_path)
@@ -272,19 +328,31 @@ if __name__ == "__main__":
         following_timestamps,
         followers,
     )
-    following_not_likers = get_following_not_likers(following_path)
+    following_not_likers = filter_deleted_ghost_followers(
+        filter_passlist(get_following_not_likers(following_path), passlist=passlist),
+        following_timestamps,
+    )
+    following_not_likers = filter_passlist(
+        following_not_likers,
+        passlist=[record["username"] for record in deleted],
+    )
 
     _print_list("Unique post likers", likers)
     _print_list("Following", following)
     _print_list("Followers", followers)
     if passlist:
-        print(f"Passlist ({len(passlist)}) — excluded from unreciprocated follows")
+        print(
+            f"Passlist ({len(passlist)}) — excluded from unreciprocated and ghost followers"
+        )
         print()
-    deleted = load_deleted()
     if deleted:
-        print(f"Deleted tombstones ({len(deleted)}) — unchanged accounts excluded from review")
+        print(
+            f"Deleted tombstones ({len(deleted)}) — excluded from unreciprocated and ghost followers"
+        )
         print()
     _print_list("Unreciprocated follows", unreciprocated, show_names=True)
     _print_list("Ghost followers", following_not_likers)
 
     review_unreciprocated_follows(unreciprocated, following_timestamps=following_timestamps)
+    print()
+    review_ghost_followers(following_not_likers, following_timestamps=following_timestamps)
