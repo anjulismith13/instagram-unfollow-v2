@@ -190,6 +190,7 @@ def _review_follows(
     Options:
       o - open Instagram profile (to unfollow manually)
       p - add to passlist and skip in future lists
+      a - add the previously opened profile to the passlist
       d - mark the previously opened profile as unavailable/deleted
       s - skip this account for now
       q - quit review
@@ -200,8 +201,13 @@ def _review_follows(
 
     total = len(usernames)
     print(f"Reviewing {total} {label.lower()}.")
-    print("  [o] open Instagram  [p] passlist  [d] previous profile deleted  [s] skip  [q] quit")
-    print("  After checking an opened profile, enter d at the next prompt if it was unavailable.")
+    print(
+        "  [o] open Instagram  [p] passlist  [a] previous profile passlist "
+        " [d] previous profile deleted  [s] skip  [q] quit"
+    )
+    print(
+        "  After checking an opened profile, enter a to passlist it or d if it was unavailable."
+    )
     print()
     following_timestamps = following_timestamps or {}
     last_opened = None
@@ -223,6 +229,14 @@ def _review_follows(
                         print(f"  Marked @{last_opened} deleted ({deleted_path})")
                     last_opened = None
                 continue
+            if choice in {"a", "add", "previous-passlist", "previous_passlist"}:
+                if last_opened is None:
+                    print("  Open a profile first; a adds the previously opened profile to the passlist.")
+                else:
+                    add_to_passlist(last_opened, path=path)
+                    print(f"  Added @{last_opened} to passlist ({path})")
+                    last_opened = None
+                continue
             if choice in {"o", "unfollow"}:
                 open_instagram_profile(username)
                 print(f"  Opened {INSTAGRAM_PROFILE_URL.format(username=username)}")
@@ -237,13 +251,19 @@ def _review_follows(
             if choice in {"q", "quit"}:
                 print("Stopped review.")
                 return
-            print("  Choose o (open), p (passlist), d (previous deleted), s (skip), or q (quit).")
+            print(
+                "  Choose o (open), p (passlist), a (previous passlist), "
+                "d (previous deleted), s (skip), or q (quit)."
+            )
 
     if last_opened is not None:
         final_choice = input(
-            f"Last opened @{last_opened} — enter [d] if unavailable, or Enter to finish: "
+            f"Last opened @{last_opened} — [a] passlist, [d] unavailable, or Enter to finish: "
         ).strip().lower()
-        if final_choice in {"d", "deleted"}:
+        if final_choice in {"a", "add", "previous-passlist", "previous_passlist"}:
+            add_to_passlist(last_opened, path=path)
+            print(f"  Added @{last_opened} to passlist ({path})")
+        elif final_choice in {"d", "deleted"}:
             timestamp = following_timestamps.get(last_opened)
             if timestamp is None:
                 print(f"  Cannot tombstone @{last_opened}: its export has no follow timestamp.")

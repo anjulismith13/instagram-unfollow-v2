@@ -12,6 +12,7 @@ So, which accounts are those? Instagram’s API does not reveal who has muted yo
 As a first pass to optimize your follow : following ratio, you want to unfollow accounts that no longer follow you. Instagram allows you to export data on who you follow and who follows you. This program analyzes that data downloaded from Instagram and displays each account you unreciprocatedly follow for evaluation. You can choose to:
 - **open** the account in a new tab to evaluate/unfollow
 - add the account to a **"passlist"** (accounts you want to follow regardless of their engagement with you i.e. @jenniferaniston)
+- add the **previously opened** account to the passlist
 - **skip** the account for now
 - mark the account as having been **deleted**
 - **exit** the evaluation window
@@ -22,6 +23,10 @@ During the interactive unreciprocated-follow review, `o` opens a profile and
 advances to the next account. If the opened profile shows Instagram's “page isn't
 available” message, enter `d` at that next prompt. This records the previously
 opened account in `deleted.json`, separate from `passlist.json`.
+
+If the previously opened account is one you want to keep following, enter `a`
+at that next prompt to add it to `passlist.json` instead. The final prompt also
+accepts `a` or `d` for the last profile opened.
 
 Each tombstone stores the username, the follow timestamp from `following.json`,
 and the date it was marked. An unchanged tombstone is hidden from later
