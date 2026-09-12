@@ -1,5 +1,5 @@
 # Instagram Engagement Analyzer
-A personal project for analyzing Instagram engagement data without hooking into the Meta API. 
+A personal project for analyzing Instagram engagement data without hooking into the Meta API. Developed with the support of AI tooling. 
 
 ## Use Case
 As influencer marketing grows on Instagram, engagement metrics are increasingly important to brands. A large following matters, but engagement matters more.
